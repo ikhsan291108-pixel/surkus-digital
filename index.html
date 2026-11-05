@@ -1237,12 +1237,42 @@
     if (page === 'checker') document.getElementById('checker-result').innerHTML = '';
   }
 
+  // ===== API BACKEND (Google Apps Script Web App) =====
+  // Ganti URL ini jika Anda redeploy Apps Script dan URL berubah.
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwdkbLA73Jl2wpfcGU22a-8GWIcfEoOUbnOkB7WmB40zRhAP0lIC0v4iLP2aemvzZsENQ/exec';
+
+  /**
+   * Panggil fungsi backend.
+   * - Jika dibuka dari dalam Apps Script (google.script.run tersedia) → pakai itu.
+   * - Jika di GitHub Pages / domain lain → fetch POST ke Web App.
+   * Content-Type text/plain menghindari CORS preflight (GAS tidak handle OPTIONS).
+   */
   function run(fnName, ...args) {
-    return new Promise((resolve, reject) => {
-      if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        reject(new Error('Buka melalui URL deployment Apps Script')); return;
+    // Mode native Apps Script (HTML dilayani dari GAS)
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      return new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fnName](...args);
+      });
+    }
+
+    // Mode eksternal (GitHub Pages, dll.)
+    return fetch(API_URL, {
+      method: 'POST',
+      // text/plain = no preflight
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: fnName, args: args }),
+      redirect: 'follow'
+    }).then(async (res) => {
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch (e) {
+        throw new Error('Respons server tidak valid. Pastikan Web App di-deploy ulang (Execute as: Me, Access: Anyone).');
       }
-      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fnName](...args);
+      return data;
+    }).catch((err) => {
+      if (err && err.message) throw err;
+      throw new Error('Gagal terhubung ke server. Cek koneksi atau URL API.');
     });
   }
 
